@@ -183,15 +183,33 @@ func startService(
 				common.Auth.TokenSource = nil
 			}
 
+			protocolPorts := client.ServerProtocolPorts(&common, s)
+			if len(protocolPorts) == 0 {
+				return fmt.Errorf("server %s has no valid port configured", s.Name)
+			}
+			common.ServerPort = protocolPorts[0].Port
+			common.Transport.Protocol = protocolPorts[0].Protocol
+
 			filteredProxies := client.FilterProxyCfgsByServerName(proxyCfgs, s.Name)
-			log.Infof("start frpc service to frps [%s] %s:%d, proxies=%d", s.Name, s.Addr, s.Port, len(filteredProxies))
+			log.Infof("start frpc service to frps [%s] %s (%s), proxies=%d",
+				s.Name, s.Addr, client.FormatServerProtocolPorts(protocolPorts), len(filteredProxies))
+
+			var connectorCreator func(context.Context, *v1.ClientCommonConfig) client.Connector
+			if len(protocolPorts) > 1 {
+				portsCopy := make([]client.ServerProtocolPort, len(protocolPorts))
+				copy(portsCopy, protocolPorts)
+				connectorCreator = func(ctx context.Context, cfg *v1.ClientCommonConfig) client.Connector {
+					return client.NewMultiConnector(ctx, cfg, portsCopy)
+				}
+			}
 
 			svr, err := client.NewService(client.ServiceOptions{
-				Common:         &common,
-				ProxyCfgs:      filteredProxies,
-				VisitorCfgs:    nil,
-				UnsafeFeatures: unsafeFeatures,
-				ConfigFilePath: cfgFile,
+				Common:           &common,
+				ProxyCfgs:        filteredProxies,
+				VisitorCfgs:      nil,
+				UnsafeFeatures:   unsafeFeatures,
+				ConfigFilePath:   cfgFile,
+				ConnectorCreator: connectorCreator,
 			})
 			if err != nil {
 				return err

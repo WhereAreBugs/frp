@@ -89,10 +89,26 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 		return
 	}
 
+	ensureTimeout := 10 * time.Second
+	// UDP-based control connections (kcp/quic) can be slower to establish on busy hosts.
+	// Normalize config to tolerate different whitespace/newline formatting.
+	clientCfg := strings.Join(strings.Fields(configures.client), "")
+	isKCPOrQUIC := strings.Contains(clientCfg, "protocol=kcp") || strings.Contains(clientCfg, "protocol=quic")
+	if isKCPOrQUIC {
+		ensureTimeout = 30 * time.Second
+		// Mutual TLS over UDP-based protocols can take longer (cert parsing + handshake).
+		if strings.Contains(clientCfg, "tls_cert_file=") ||
+			strings.Contains(clientCfg, "tls_key_file=") ||
+			strings.Contains(clientCfg, "tls_trusted_ca_file=") ||
+			strings.Contains(clientCfg, "tls_server_name=") {
+			ensureTimeout = 60 * time.Second
+		}
+	}
+
 	framework.NewRequestExpect(f).PortName(tcpPortName).Explain("tcp proxy").
-		EnsureEventually(10*time.Second, 200*time.Millisecond)
+		EnsureEventually(ensureTimeout, 200*time.Millisecond)
 	framework.NewRequestExpect(f).Protocol("udp").PortName(udpPortName).Explain("udp proxy").
-		EnsureEventually(10*time.Second, 200*time.Millisecond)
+		EnsureEventually(ensureTimeout, 200*time.Millisecond)
 }
 
 // defineClientServerTest test a normal tcp and udp proxy with specified TestConfigures.

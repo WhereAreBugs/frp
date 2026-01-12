@@ -198,33 +198,34 @@ remotePort = {{ .%s }}
 		})
 
 		ginkgo.It("should fail with non-existent token file", func() {
-			// This test verifies that server fails to start when tokenSource points to non-existent file
-			// We'll verify this by checking that the configuration loading itself fails
+			// This test verifies that server fails to start when tokenSource points to non-existent file.
+			// We'll verify this by checking that the configuration loading itself fails.
 
-			// Create a config that references a non-existent file
+			// Create a config that references a non-existent file.
 			tmpDir := f.TempDirectory
 			nonExistentFile := filepath.Join(tmpDir, "non_existent_token")
 
 			serverConf := consts.DefaultServerConfig
 
-			// Server config with non-existent tokenSource file
+			// Server config with non-existent tokenSource file.
 			serverConf += fmt.Sprintf(`
-auth.tokenSource.type = "file"
-auth.tokenSource.file.path = "%s"
-`, nonExistentFile)
+			auth.tokenSource.type = "file"
+			auth.tokenSource.file.path = "%s"
+		`, nonExistentFile)
 
 			// The test expectation is that this will fail during the RunProcesses call
-			// because the server cannot load the configuration due to missing token file
+			// because the server cannot load the configuration due to missing token file.
 			defer func() {
 				if r := recover(); r != nil {
-					// Expected: server should fail to start due to missing file
+					// Expected: server should fail to start due to missing file.
 					ginkgo.By(fmt.Sprintf("Server correctly failed to start: %v", r))
 				}
 			}()
 
-			// This should cause a panic or error during server startup
+			// This should cause a panic or error during server startup.
 			f.RunProcesses([]string{serverConf}, []string{})
 		})
+
 	})
 
 	ginkgo.Describe("Exec-based token loading", func() {

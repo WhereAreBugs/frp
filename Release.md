@@ -1,13 +1,14 @@
-## Features
+## v0.66.0-ext
 
-* HTTPS proxies now support load balancing groups. Multiple HTTPS proxies can be configured with the same `loadBalancer.group` and `loadBalancer.groupKey` to share the same custom domain and distribute traffic across multiple backend services, similar to the existing TCP and HTTP load balancing capabilities.
-* Individual frpc proxies and visitors now accept an `enabled` flag (defaults to true), letting you disable specific entries without relying on the global `start` list—disabled blocks are skipped when client configs load.
-* OIDC authentication now supports a `tokenSource` field to dynamically obtain tokens from external sources. You can use `type = "file"` to read a token from a file, or `type = "exec"` to run an external command (e.g., a cloud CLI or secrets manager) and capture its stdout as the token. The `exec` type requires the `--allow-unsafe=TokenSourceExec` CLI flag for security reasons.
+### 主要特性
+- TCPMux 多会话自动择优：支持frpc到frps之间多连接（多协议或单协议），主动/被动链路探测自动选择最优会话，切换对任意客户端 payload 透明。
+- 多 FRPS 并行连接与负载均衡：`servers[]` 多服务端注册，按 proxy 的 `serverNames` 允许列表筛选，支持每个服务端独立 token。
+- FRPS 反代端口支持 TCP Fast Open：为各类 TCP listener 尝试开启 TFO（尽力而为，不支持则自动降级），通过 `transport.tcpFastOpen` / `transport.tcpFastOpenQueue` 配置，详见 `doc/tcp_fast_open.md`。
 
-## Improvements
+### 兼容性
+- `tcpMuxLinkProbeMode` 默认 `auto`，会自动检测服务端是否支持主动链路探测模式，不支持时回退被动模式。
+- 多 FRPS 模式暂不支持 visitors/webServer/virtualNet，proxy 需配置 `serverNames` 以选择注册到哪些服务端。
 
-* **VirtualNet**: Implemented intelligent reconnection with exponential backoff. When connection errors occur repeatedly, the reconnect interval increases from 60s to 300s (max), reducing unnecessary reconnection attempts. Normal disconnections still reconnect quickly at 10s intervals.
-
-## Fixes
-
-* Fix deadlock issue when TCP connection is closed. Previously, sending messages could block forever if the connection handler had already stopped.
+### 构建与发布
+- 可执行文件命名统一为 `frpc-ext` / `frps-ext`，避免与上游冲突。
+- OpenWrt feed 提供 `frpc-ext`、`frps-ext`、`luci-app-frpc-ext` 三个包，支持官方 SDK 多架构编译。

@@ -21,6 +21,7 @@ import (
 
 	gerr "github.com/fatedier/golib/errors"
 
+	netpkg "github.com/fatedier/frp/pkg/util/net"
 	"github.com/fatedier/frp/server/ports"
 )
 
@@ -28,15 +29,18 @@ import (
 type TCPGroupCtl struct {
 	groups map[string]*TCPGroup
 
+	tfoOpts netpkg.TCPFastOpenOptions
+
 	// portManager is used to manage port
 	portManager *ports.Manager
 	mu          sync.Mutex
 }
 
 // NewTCPGroupCtl return a new TcpGroupCtl
-func NewTCPGroupCtl(portManager *ports.Manager) *TCPGroupCtl {
+func NewTCPGroupCtl(portManager *ports.Manager, tfoOpts netpkg.TCPFastOpenOptions) *TCPGroupCtl {
 	return &TCPGroupCtl{
 		groups:      make(map[string]*TCPGroup),
+		tfoOpts:     tfoOpts,
 		portManager: portManager,
 	}
 }
@@ -100,7 +104,7 @@ func (tg *TCPGroup) Listen(proxyName string, group string, groupKey string, addr
 		if err != nil {
 			return
 		}
-		tcpLn, errRet := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
+		tcpLn, errRet := netpkg.ListenTCP(net.JoinHostPort(addr, strconv.Itoa(port)), tg.ctl.tfoOpts)
 		if errRet != nil {
 			err = errRet
 			return

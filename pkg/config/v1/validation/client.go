@@ -71,11 +71,23 @@ func validateClientServers(c *v1.ClientCommonConfig) error {
 		if strings.TrimSpace(s.Addr) == "" {
 			errs = AppendError(errs, fmt.Errorf("servers[%d].addr is required", i))
 		}
-		if err := ValidatePort(s.Port, fmt.Sprintf("servers[%d].port", i)); err != nil {
-			errs = AppendError(errs, err)
+		hasPort := false
+		checkPort := func(port int, name string) {
+			if err := ValidatePort(port, name); err != nil {
+				errs = AppendError(errs, err)
+			}
+			if port > 0 {
+				hasPort = true
+			}
 		}
-		if s.Port == 0 {
-			errs = AppendError(errs, fmt.Errorf("servers[%d].port must be > 0", i))
+		checkPort(s.Port, fmt.Sprintf("servers[%d].port", i))
+		checkPort(s.TCPPort, fmt.Sprintf("servers[%d].tcpPort", i))
+		checkPort(s.KCPPort, fmt.Sprintf("servers[%d].kcpPort", i))
+		checkPort(s.QUICPort, fmt.Sprintf("servers[%d].quicPort", i))
+		checkPort(s.WebsocketPort, fmt.Sprintf("servers[%d].websocketPort", i))
+		checkPort(s.WSSPort, fmt.Sprintf("servers[%d].wssPort", i))
+		if !hasPort {
+			errs = AppendError(errs, fmt.Errorf("servers[%d] must set at least one port", i))
 		}
 	}
 	return errs

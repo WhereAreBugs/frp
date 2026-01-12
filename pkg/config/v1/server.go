@@ -166,6 +166,14 @@ type ServerTransportConfig struct {
 	// TCPKeepAlive specifies the interval between keep-alive probes for an active network connection between frpc and frps.
 	// If negative, keep-alive probes are disabled.
 	TCPKeepAlive int64 `json:"tcpKeepalive,omitempty"`
+	// TCPFastOpen enables TCP Fast Open (TFO) on server-side TCP listeners.
+	//
+	// Note that TFO support depends on the operating system and kernel settings.
+	// When unsupported, frps will still start and simply fall back to normal TCP.
+	TCPFastOpen bool `json:"tcpFastOpen,omitempty"`
+	// TCPFastOpenQueue specifies the maximum number of outstanding TFO requests (queue length).
+	// Only meaningful on platforms that support a queue-length style TCP_FASTOPEN option (e.g. Linux).
+	TCPFastOpenQueue int `json:"tcpFastOpenQueue,omitempty"`
 	// MaxPoolCount specifies the maximum pool size for each proxy. By default,
 	// this value is 5.
 	MaxPoolCount int64 `json:"maxPoolCount,omitempty"`
@@ -189,6 +197,9 @@ func (c *ServerTransportConfig) Complete() {
 		c.HeartbeatTimeout = util.EmptyOr(c.HeartbeatTimeout, -1)
 	} else {
 		c.HeartbeatTimeout = util.EmptyOr(c.HeartbeatTimeout, 90)
+	}
+	if c.TCPFastOpen && c.TCPFastOpenQueue == 0 {
+		c.TCPFastOpenQueue = 1024
 	}
 	c.QUIC.Complete()
 	if c.TLS.TrustedCaFile != "" {

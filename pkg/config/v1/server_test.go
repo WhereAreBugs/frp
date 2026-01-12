@@ -29,6 +29,8 @@ func TestServerConfigComplete(t *testing.T) {
 
 	require.EqualValues("token", c.Auth.Method)
 	require.Equal(true, lo.FromPtr(c.Transport.TCPMux))
+	require.False(c.Transport.TCPFastOpen)
+	require.Equal(0, c.Transport.TCPFastOpenQueue)
 	require.Equal(true, lo.FromPtr(c.DetailedErrorsToClient))
 }
 
@@ -38,4 +40,17 @@ func TestAuthServerConfig_Complete(t *testing.T) {
 	err := cfg.Complete()
 	require.NoError(err)
 	require.EqualValues("token", cfg.Method)
+}
+
+func TestServerTransportConfigCompleteSetsDefaultTFOQueue(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	c := &ServerConfig{}
+	require.NoError(c.Complete())
+
+	c.Transport.TCPFastOpen = true
+	c.Transport.TCPFastOpenQueue = 0
+	c.Transport.Complete()
+	require.Equal(1024, c.Transport.TCPFastOpenQueue)
 }

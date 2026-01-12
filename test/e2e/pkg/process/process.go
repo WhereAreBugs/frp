@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"time"
 )
 
 type Process struct {
@@ -51,6 +52,26 @@ func (p *Process) Stop() error {
 	}
 	p.cancel()
 	return p.cmd.Wait()
+}
+
+// WaitTimeout waits for the process to exit without sending a signal.
+// It is useful for tests that expect a process to fail fast on startup.
+func (p *Process) WaitTimeout(timeout time.Duration) (err error, exited bool) {
+	if p.stopped {
+		return nil, true
+	}
+	ch := make(chan error, 1)
+	go func() {
+		ch <- p.cmd.Wait()
+	}()
+
+	select {
+	case err := <-ch:
+		p.stopped = true
+		return err, true
+	case <-time.After(timeout):
+		return nil, false
+	}
 }
 
 func (p *Process) ErrorOutput() string {

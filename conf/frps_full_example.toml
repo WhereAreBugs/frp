@@ -40,6 +40,11 @@ transport.maxPoolCount = 5
 # If negative, keep-alive probes are disabled.
 # transport.tcpKeepalive = 7200
 
+# Enable TCP Fast Open (TFO) for frps TCP listeners (best-effort).
+# NOTE: TFO support depends on OS/kernel settings; when unsupported it will fall back to normal TCP.
+# transport.tcpFastOpen = true
+# transport.tcpFastOpenQueue = 1024
+
 # transport.tls.force specifies whether to only accept TLS-encrypted connections. By default, the value is false.
 transport.tls.force = false
 

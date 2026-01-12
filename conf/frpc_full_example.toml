@@ -18,6 +18,13 @@ serverPort = 7000
 #   { name = "cn", addr = "cn-frps.example.com", port = 7000, token = "token-cn" },
 #   { name = "us", addr = "us-frps.example.com", port = 7000, token = "token-us" },
 # ]
+# For multi-frps mode you can also configure per-protocol ports for the same server.
+# When tcpPort/quicPort/kcpPort/websocketPort/wssPort are set, frpc will create connections
+# for each protocol and balance work connections across them.
+#
+# servers = [
+#   { name = "cn", addr = "cn-frps.example.com", tcpPort = 7000, quicPort = 7001, kcpPort = 7002 },
+# ]
 
 # STUN server to help penetrate NAT hole.
 # natHoleStunServer = "stun.easyvoip.com:3478"

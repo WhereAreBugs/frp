@@ -31,7 +31,7 @@ func TestClientConfigComplete(t *testing.T) {
 	require.Equal(true, lo.FromPtr(c.Transport.TCPMux))
 	require.Equal(1, c.Transport.TCPMuxSessionCount)
 	require.EqualValues(0, c.Transport.TCPMuxLinkProbeInterval)
-	require.EqualValues("auto", c.Transport.TCPMuxLinkProbeMode)
+	require.EqualValues("passive", c.Transport.TCPMuxLinkProbeMode)
 	require.Equal(true, lo.FromPtr(c.LoginFailExit))
 	require.Equal(true, lo.FromPtr(c.Transport.TLS.Enable))
 	require.Equal(true, lo.FromPtr(c.Transport.TLS.DisableCustomTLSFirstByte))
@@ -44,4 +44,33 @@ func TestAuthClientConfig_Complete(t *testing.T) {
 	err := cfg.Complete()
 	require.NoError(err)
 	require.EqualValues("token", cfg.Method)
+}
+
+func TestClientServerConfigHasProtocolPorts(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	require.False((ClientServerConfig{}).HasProtocolPorts())
+	require.True((ClientServerConfig{TCPPort: 7000}).HasProtocolPorts())
+	require.True((ClientServerConfig{QUICPort: 7001}).HasProtocolPorts())
+	require.True((ClientServerConfig{WSSPort: 7002}).HasProtocolPorts())
+}
+
+func TestClientCommonConfigCompleteProtocolPortsDoNotFillPort(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	c := &ClientCommonConfig{
+		Servers: []ClientServerConfig{{
+			Addr:    "example.com",
+			TCPPort: 7000,
+		}},
+	}
+	require.NoError(c.Complete())
+
+	require.Len(c.Servers, 1)
+	require.Equal("default", c.Servers[0].Name)
+	require.Equal("example.com", c.Servers[0].Addr)
+	// Port is left untouched because protocol-specific ports are configured.
+	require.Equal(0, c.Servers[0].Port)
 }

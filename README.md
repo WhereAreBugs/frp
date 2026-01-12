@@ -66,6 +66,21 @@ frp is a fast reverse proxy that allows you to expose a local server located beh
 
 frp also offers a P2P connect mode.
 
+## Fork Notes (frp-ext)
+
+This repository is a downstream fork of the upstream project `fatedier/frp`.
+
+Key differences (non-exhaustive):
+
+- **Multi-frps support (client-side)**: adds support for connecting to multiple frps endpoints from one frpc instance (see related `client/multiserver.go`).
+- **Token sources**: adds `tokenSource` support (e.g. load auth token from file; exec-based token source may require unsafe feature allowlist).
+- **TCP Fast Open (server-side)**: adds best-effort support for enabling TCP Fast Open on frps listeners (`transport.tcpFastOpen`, `transport.tcpFastOpenQueue`).
+- **OpenWrt packaging/feed**: includes an OpenWrt feed under `frp-ext-feed/` providing `frpc-ext` and `frps-ext` packages.
+- **LuCI apps for OpenWrt**: includes `luci-app-frpc-ext/` and `luci-app-frps-ext/`.
+  - `luci-app-frps-ext` uses `/etc/config/frps_ext` and `/etc/init.d/frps_ext` so it can coexist with the upstream `frps` LuCI app.
+
+If you are looking for the upstream project, see: https://github.com/fatedier/frp
+
 ## Table of Contents
 
 <!-- vim-markdown-toc GFM -->
@@ -73,6 +88,7 @@ frp also offers a P2P connect mode.
 * [Development Status](#development-status)
     * [About V2](#about-v2)
 * [Architecture](#architecture)
+* [Fork Notes (frp-ext)](#fork-notes-frp-ext)
 * [Example Usage](#example-usage)
     * [Access your computer in a LAN network via SSH](#access-your-computer-in-a-lan-network-via-ssh)
     * [Multiple SSH services sharing the same port](#multiple-ssh-services-sharing-the-same-port)
@@ -952,6 +968,18 @@ This feature is suitable for a large number of short connections.
   # frpc.toml
   transport.poolCount = 1
   ```
+
+#### TCP Fast Open (TFO)
+
+To reduce connection establishment latency for incoming TCP connections to `frps`, you can enable TCP Fast Open on `frps` TCP listeners (best-effort).
+
+```toml
+# frps.toml
+transport.tcpFastOpen = true
+transport.tcpFastOpenQueue = 1024
+```
+
+Platform support depends on the OS/kernel; when unsupported, `frps` will fall back to normal TCP without failing to start. See `doc/tcp_fast_open.md`.
 
 ### Load balancing
 

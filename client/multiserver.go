@@ -1,10 +1,66 @@
 package client
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
 )
+
+type ServerProtocolPort struct {
+	Protocol string
+	Port     int
+}
+
+// ServerProtocolPorts returns the list of protocol/port pairs to use for a server entry.
+// If any protocol-specific port is configured, only those protocols will be used.
+// Otherwise, the default transport protocol and server port will be returned.
+func ServerProtocolPorts(common *v1.ClientCommonConfig, server v1.ClientServerConfig) []ServerProtocolPort {
+	hasProtocolPorts := server.HasProtocolPorts()
+
+	var out []ServerProtocolPort
+	add := func(protocol string, port int) {
+		if port <= 0 {
+			return
+		}
+		out = append(out, ServerProtocolPort{
+			Protocol: strings.ToLower(protocol),
+			Port:     port,
+		})
+	}
+
+	if hasProtocolPorts {
+		add("tcp", server.TCPPort)
+		add("quic", server.QUICPort)
+		add("kcp", server.KCPPort)
+		add("websocket", server.WebsocketPort)
+		add("wss", server.WSSPort)
+		return out
+	}
+
+	protocol := strings.ToLower(strings.TrimSpace(common.Transport.Protocol))
+	if protocol == "" {
+		protocol = "tcp"
+	}
+	port := server.Port
+	if port == 0 {
+		port = common.ServerPort
+	}
+	add(protocol, port)
+	return out
+}
+
+func FormatServerProtocolPorts(ports []ServerProtocolPort) string {
+	if len(ports) == 0 {
+		return ""
+	}
+	strs := make([]string, 0, len(ports))
+	for _, p := range ports {
+		strs = append(strs, fmt.Sprintf("%s:%d", p.Protocol, p.Port))
+	}
+	return strings.Join(strs, ",")
+}
 
 // FilterProxyCfgsByServerName filters proxy configurers by the server allow list.
 // If a proxy has an empty allow list, it will be included for all servers.

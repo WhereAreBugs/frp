@@ -171,6 +171,11 @@ func NewService(cfg *v1.ServerConfig) (*Service, error) {
 		cfg:               cfg,
 		ctx:               context.Background(),
 	}
+
+	tfoOpts := netpkg.TCPFastOpenOptions{
+		Enable: cfg.Transport.TCPFastOpen,
+		Queue:  cfg.Transport.TCPFastOpenQueue,
+	}
 	if webServer != nil {
 		webServer.RouteRegister(svr.registerRouteHandlers)
 	}
@@ -179,7 +184,7 @@ func NewService(cfg *v1.ServerConfig) (*Service, error) {
 	if cfg.TCPMuxHTTPConnectPort > 0 {
 		var l net.Listener
 		address := net.JoinHostPort(cfg.ProxyBindAddr, strconv.Itoa(cfg.TCPMuxHTTPConnectPort))
-		l, err = net.Listen("tcp", address)
+		l, err = netpkg.ListenTCP(address, tfoOpts)
 		if err != nil {
 			return nil, fmt.Errorf("create server listener error, %v", err)
 		}
@@ -199,7 +204,7 @@ func NewService(cfg *v1.ServerConfig) (*Service, error) {
 	svr.rc.PluginManager = svr.pluginManager
 
 	// Init group controller
-	svr.rc.TCPGroupCtl = group.NewTCPGroupCtl(svr.rc.TCPPortManager)
+	svr.rc.TCPGroupCtl = group.NewTCPGroupCtl(svr.rc.TCPPortManager, tfoOpts)
 
 	// Init HTTP group controller
 	svr.rc.HTTPGroupCtl = group.NewHTTPGroupController(svr.httpVhostRouter)
@@ -225,7 +230,7 @@ func NewService(cfg *v1.ServerConfig) (*Service, error) {
 
 	// Listen for accepting connections from client.
 	address := net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.BindPort))
-	ln, err := net.Listen("tcp", address)
+	ln, err := netpkg.ListenTCP(address, tfoOpts)
 	if err != nil {
 		return nil, fmt.Errorf("create server listener error, %v", err)
 	}
@@ -298,7 +303,7 @@ func NewService(cfg *v1.ServerConfig) (*Service, error) {
 		if httpMuxOn {
 			l = svr.muxer.ListenHTTP(1)
 		} else {
-			l, err = net.Listen("tcp", address)
+			l, err = netpkg.ListenTCP(address, tfoOpts)
 			if err != nil {
 				return nil, fmt.Errorf("create vhost http listener error, %v", err)
 			}
@@ -316,7 +321,7 @@ func NewService(cfg *v1.ServerConfig) (*Service, error) {
 			l = svr.muxer.ListenHTTPS(1)
 		} else {
 			address := net.JoinHostPort(cfg.ProxyBindAddr, strconv.Itoa(cfg.VhostHTTPSPort))
-			l, err = net.Listen("tcp", address)
+			l, err = netpkg.ListenTCP(address, tfoOpts)
 			if err != nil {
 				return nil, fmt.Errorf("create server listener error, %v", err)
 			}

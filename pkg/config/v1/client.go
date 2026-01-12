@@ -32,9 +32,21 @@ type ClientServerConfig struct {
 	Addr string `json:"addr,omitempty"`
 	// Port is the port of frps.
 	Port int `json:"port,omitempty"`
+	// Protocol-specific ports for connecting to this frps instance.
+	// If unset, Port is used for the configured transport protocol.
+	TCPPort       int `json:"tcpPort,omitempty"`
+	KCPPort       int `json:"kcpPort,omitempty"`
+	QUICPort      int `json:"quicPort,omitempty"`
+	WebsocketPort int `json:"websocketPort,omitempty"`
+	WSSPort       int `json:"wssPort,omitempty"`
 	// Token overrides auth.token when connecting to this server. This allows different
 	// frps instances to use different tokens in multi-frps mode.
 	Token string `json:"token,omitempty"`
+}
+
+// HasProtocolPorts returns true if any protocol-specific port is configured.
+func (c ClientServerConfig) HasProtocolPorts() bool {
+	return c.TCPPort > 0 || c.KCPPort > 0 || c.QUICPort > 0 || c.WebsocketPort > 0 || c.WSSPort > 0
 }
 
 type ClientConfig struct {
@@ -103,7 +115,7 @@ func (c *ClientCommonConfig) Complete() error {
 	c.ServerAddr = util.EmptyOr(c.ServerAddr, "0.0.0.0")
 	c.ServerPort = util.EmptyOr(c.ServerPort, 7000)
 	for i := range c.Servers {
-		if c.Servers[i].Port == 0 {
+		if c.Servers[i].Port == 0 && !c.Servers[i].HasProtocolPorts() {
 			c.Servers[i].Port = c.ServerPort
 		}
 		if c.Servers[i].Name == "" {

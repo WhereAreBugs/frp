@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	v1 "github.com/fatedier/frp/pkg/config/v1"
+	netpkg "github.com/fatedier/frp/pkg/util/net"
 )
 
 func init() {
@@ -73,7 +74,8 @@ func (pxy *TCPProxy) Run() (remoteAddr string, err error) {
 				pxy.rc.TCPPortManager.Release(pxy.realBindPort)
 			}
 		}()
-		listener, errRet := net.Listen("tcp", net.JoinHostPort(pxy.serverCfg.ProxyBindAddr, strconv.Itoa(pxy.realBindPort)))
+		tfoOpts := netpkg.TCPFastOpenOptions{Enable: pxy.serverCfg.Transport.TCPFastOpen, Queue: pxy.serverCfg.Transport.TCPFastOpenQueue}
+		listener, errRet := netpkg.ListenTCP(net.JoinHostPort(pxy.serverCfg.ProxyBindAddr, strconv.Itoa(pxy.realBindPort)), tfoOpts)
 		if errRet != nil {
 			err = errRet
 			return

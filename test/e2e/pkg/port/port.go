@@ -52,31 +52,51 @@ func (pa *Allocator) GetByName(portName string) int {
 	pa.mu.Lock()
 	defer pa.mu.Unlock()
 
+	probeTCP := func(host string, port int) error {
+		l, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+		if err != nil {
+			return err
+		}
+		return l.Close()
+	}
+	probeUDP := func(host string, port int) error {
+		udpAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, strconv.Itoa(port)))
+		if err != nil {
+			return err
+		}
+		udpConn, err := net.ListenUDP("udp", udpAddr)
+		if err != nil {
+			return err
+		}
+		return udpConn.Close()
+	}
+
+	// Probe on multiple loopback/any addresses to reduce false positives on platforms
+	// where 0.0.0.0/127.0.0.1 binding semantics differ.
+	probeHosts := []string{"127.0.0.1", "0.0.0.0", "::1"}
+
 	for i := 0; i < 20; i++ {
 		port := pa.getByRange(builder.rangePortFrom, builder.rangePortTo)
 		if port == 0 {
 			return 0
 		}
 
-		l, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
-		if err != nil {
+		ok := true
+		for _, host := range probeHosts {
+			if err := probeTCP(host, port); err != nil {
+				ok = false
+				break
+			}
+			if err := probeUDP(host, port); err != nil {
+				ok = false
+				break
+			}
+		}
+		if !ok {
 			// Maybe not controlled by us, mark it used.
 			pa.used.Insert(port)
 			continue
 		}
-		l.Close()
-
-		udpAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
-		if err != nil {
-			continue
-		}
-		udpConn, err := net.ListenUDP("udp", udpAddr)
-		if err != nil {
-			// Maybe not controlled by us, mark it used.
-			pa.used.Insert(port)
-			continue
-		}
-		udpConn.Close()
 
 		pa.used.Insert(port)
 		pa.reserved.Delete(port)

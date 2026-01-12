@@ -61,6 +61,10 @@ func (v *ConfigValidator) ValidateServerConfig(c *v1.ServerConfig) (Warning, err
 		errs = AppendError(errs, err)
 	}
 
+	if c.Transport.TCPFastOpenQueue < 0 {
+		errs = AppendError(errs, fmt.Errorf("invalid transport.tcpFastOpenQueue, must be >= 0"))
+	}
+
 	errs = AppendError(errs, ValidatePort(c.BindPort, "bindPort"))
 	errs = AppendError(errs, ValidatePort(c.KCPBindPort, "kcpBindPort"))
 	errs = AppendError(errs, ValidatePort(c.QUICBindPort, "quicBindPort"))

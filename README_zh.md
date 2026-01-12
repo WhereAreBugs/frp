@@ -70,6 +70,7 @@ an API that records Zoom, Google Meet, Microsoft Teams, in-person meetings, and 
   * 当 `transport.tcpMux = true` 时，支持配置多条底层 TCP 连接（多路复用会话）并自动择优为新连接分配链路：`transport.tcpMuxSessionCount`。
   * 支持链路探测模式：被动（`transport.tcpMuxLinkProbeMode = "passive"`）、主动（`"active"`）、自动检测（`"auto"`）以及禁用（`"disabled"`），并可配置探测间隔与超时：`transport.tcpMuxLinkProbeInterval`、`transport.tcpMuxLinkProbeTimeout`。
 * 代理组间的负载均衡。
+* 服务端监听支持 TCP Fast Open（TFO）：用于降低 TCP 建连时延（尽力而为，不支持则自动降级），可配置 `transport.tcpFastOpen` / `transport.tcpFastOpenQueue`。
 * 端口复用，多个服务通过同一个服务端端口暴露。
 * 支持 P2P 通信，流量不经过服务器中转，充分利用带宽资源。
 * 多个原生支持的客户端插件（静态文件查看，HTTPS/HTTP 协议转换，HTTP、SOCK5 代理等），便于独立使用 frp 客户端完成某些工作。
