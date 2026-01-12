@@ -8,7 +8,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-frp_version=`./bin/frps --version`
+frp_version=`./bin/frps-ext --version`
 echo "build version: $frp_version"
 
 # cross_compiles
@@ -30,29 +30,29 @@ for os in $os_all; do
             if [ "x${extra}" != x"_" ]; then
                 suffix="${os}_${arch}_${extra}"
             fi
-            frp_dir_name="frp_${frp_version}_${suffix}"
-            frp_path="./packages/frp_${frp_version}_${suffix}"
+            frp_dir_name="frp-ext_${frp_version}_${suffix}"
+            frp_path="./packages/frp-ext_${frp_version}_${suffix}"
 
             if [ "x${os}" = x"windows" ]; then
-                if [ ! -f "./frpc_${os}_${arch}.exe" ]; then
+                if [ ! -f "./frpc-ext_${os}_${arch}.exe" ]; then
                     continue
                 fi
-                if [ ! -f "./frps_${os}_${arch}.exe" ]; then
+                if [ ! -f "./frps-ext_${os}_${arch}.exe" ]; then
                     continue
                 fi
                 mkdir ${frp_path}
-                mv ./frpc_${os}_${arch}.exe ${frp_path}/frpc.exe
-                mv ./frps_${os}_${arch}.exe ${frp_path}/frps.exe
+                mv ./frpc-ext_${os}_${arch}.exe ${frp_path}/frpc-ext.exe
+                mv ./frps-ext_${os}_${arch}.exe ${frp_path}/frps-ext.exe
             else
-                if [ ! -f "./frpc_${suffix}" ]; then
+                if [ ! -f "./frpc-ext_${suffix}" ]; then
                     continue
                 fi
-                if [ ! -f "./frps_${suffix}" ]; then
+                if [ ! -f "./frps-ext_${suffix}" ]; then
                     continue
                 fi
                 mkdir ${frp_path}
-                mv ./frpc_${suffix} ${frp_path}/frpc
-                mv ./frps_${suffix} ${frp_path}/frps
+                mv ./frpc-ext_${suffix} ${frp_path}/frpc-ext
+                mv ./frps-ext_${suffix} ${frp_path}/frps-ext
             fi  
             cp ../LICENSE ${frp_path}
             cp -f ../conf/frpc.toml ${frp_path}
