@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/samber/lo"
 
@@ -39,6 +40,7 @@ func (v *ConfigValidator) ValidateClientCommonConfig(c *v1.ClientCommonConfig) (
 		func() (Warning, error) { return nil, validateLogConfig(&c.Log) },
 		func() (Warning, error) { return nil, validateWebServerConfig(&c.WebServer) },
 		func() (Warning, error) { return validateTransportConfig(&c.Transport) },
+		func() (Warning, error) { return nil, validateClientServers(c) },
 		func() (Warning, error) { return validateIncludeFiles(c.IncludeConfigFiles) },
 	}
 
@@ -48,6 +50,35 @@ func (v *ConfigValidator) ValidateClientCommonConfig(c *v1.ClientCommonConfig) (
 		errs = AppendError(errs, err)
 	}
 	return warnings, errs
+}
+
+func validateClientServers(c *v1.ClientCommonConfig) error {
+	if c == nil || len(c.Servers) == 0 {
+		return nil
+	}
+
+	var errs error
+	seenNames := map[string]struct{}{}
+	for i, s := range c.Servers {
+		if strings.TrimSpace(s.Name) == "" {
+			errs = AppendError(errs, fmt.Errorf("servers[%d].name is required", i))
+		} else {
+			if _, ok := seenNames[s.Name]; ok {
+				errs = AppendError(errs, fmt.Errorf("servers[%d].name [%s] is duplicated", i, s.Name))
+			}
+			seenNames[s.Name] = struct{}{}
+		}
+		if strings.TrimSpace(s.Addr) == "" {
+			errs = AppendError(errs, fmt.Errorf("servers[%d].addr is required", i))
+		}
+		if err := ValidatePort(s.Port, fmt.Sprintf("servers[%d].port", i)); err != nil {
+			errs = AppendError(errs, err)
+		}
+		if s.Port == 0 {
+			errs = AppendError(errs, fmt.Errorf("servers[%d].port must be > 0", i))
+		}
+	}
+	return errs
 }
 
 func validateFeatureGates(c *v1.ClientCommonConfig) (Warning, error) {
@@ -118,6 +149,25 @@ func validateTransportConfig(c *v1.ClientTransportConfig) (Warning, error) {
 		warnings Warning
 		errs     error
 	)
+
+	switch c.TCPMuxLinkProbeMode {
+	case "", "auto", "active", "passive", "disabled", "off", "disable":
+	default:
+		errs = AppendError(errs, fmt.Errorf("invalid transport.tcpMuxLinkProbeMode, optional values are auto, active, passive, disabled"))
+	}
+
+	if c.TCPMuxSessionCount < 1 {
+		errs = AppendError(errs, fmt.Errorf("invalid transport.tcpMuxSessionCount, must be >= 1"))
+	}
+	if c.TCPMuxSessionCount > 64 {
+		errs = AppendError(errs, fmt.Errorf("invalid transport.tcpMuxSessionCount, must be <= 64"))
+	}
+	if c.TCPMuxLinkProbeInterval < 0 {
+		errs = AppendError(errs, fmt.Errorf("invalid transport.tcpMuxLinkProbeInterval, must be >= 0"))
+	}
+	if c.TCPMuxLinkProbeTimeout < 0 {
+		errs = AppendError(errs, fmt.Errorf("invalid transport.tcpMuxLinkProbeTimeout, must be >= 0"))
+	}
 
 	if c.HeartbeatTimeout > 0 && c.HeartbeatInterval > 0 {
 		if c.HeartbeatTimeout < c.HeartbeatInterval {

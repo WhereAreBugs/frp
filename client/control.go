@@ -16,9 +16,16 @@ package client
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/samber/lo"
 
 	"github.com/fatedier/frp/client/proxy"
 	"github.com/fatedier/frp/client/visitor"
@@ -124,10 +131,22 @@ func (ctl *Control) SetInWorkConnCallback(cb func(*v1.ProxyBaseConfig, net.Conn,
 
 func (ctl *Control) handleReqWorkConn(_ msg.Message) {
 	xl := ctl.xl
+	start := time.Now()
 	workConn, err := ctl.connectServer()
 	if err != nil {
 		xl.Warnf("start new connection to server error: %v", err)
 		return
+	}
+
+	var (
+		msc MuxSessionConnector
+		idx = -1
+	)
+	if v, ok := ctl.sessionCtx.Connector.(MuxSessionConnector); ok {
+		msc = v
+		if w, ok := workConn.(interface{ MuxSessionIndex() int }); ok {
+			idx = w.MuxSessionIndex()
+		}
 	}
 
 	m := &msg.NewWorkConn{
@@ -135,11 +154,17 @@ func (ctl *Control) handleReqWorkConn(_ msg.Message) {
 	}
 	if err = ctl.sessionCtx.Auth.Setter.SetNewWorkConn(m); err != nil {
 		xl.Warnf("error during NewWorkConn authentication: %v", err)
+		if msc != nil && idx >= 0 {
+			msc.ReportMuxLinkProbeResult(idx, 0, err)
+		}
 		workConn.Close()
 		return
 	}
 	if err = msg.WriteMsg(workConn, m); err != nil {
 		xl.Warnf("work connection write to server error: %v", err)
+		if msc != nil && idx >= 0 {
+			msc.ReportMuxLinkProbeResult(idx, 0, err)
+		}
 		workConn.Close()
 		return
 	}
@@ -147,13 +172,23 @@ func (ctl *Control) handleReqWorkConn(_ msg.Message) {
 	var startMsg msg.StartWorkConn
 	if err = msg.ReadMsgInto(workConn, &startMsg); err != nil {
 		xl.Tracef("work connection closed before response StartWorkConn message: %v", err)
+		if msc != nil && idx >= 0 {
+			msc.ReportMuxLinkProbeResult(idx, 0, err)
+		}
 		workConn.Close()
 		return
 	}
 	if startMsg.Error != "" {
 		xl.Errorf("StartWorkConn contains error: %s", startMsg.Error)
+		if msc != nil && idx >= 0 {
+			msc.ReportMuxLinkProbeResult(idx, 0, fmt.Errorf("%s", startMsg.Error))
+		}
 		workConn.Close()
 		return
+	}
+
+	if msc != nil && idx >= 0 {
+		msc.ReportMuxLinkProbeResult(idx, time.Since(start), nil)
 	}
 
 	// dispatch this work connection to related proxy
@@ -278,6 +313,7 @@ func (ctl *Control) heartbeatWorker() {
 func (ctl *Control) worker() {
 	xl := ctl.xl
 	go ctl.heartbeatWorker()
+	go ctl.linkProbeWorker()
 	go ctl.msgDispatcher.Run()
 
 	<-ctl.msgDispatcher.Done()
@@ -293,4 +329,204 @@ func (ctl *Control) UpdateAllConfigurer(proxyCfgs []v1.ProxyConfigurer, visitorC
 	ctl.vm.UpdateAll(visitorCfgs)
 	ctl.pm.UpdateAll(proxyCfgs)
 	return nil
+}
+
+// linkProbeWorker probes each tcp mux session via Ping/Pong, so that the connector
+// can choose a better underlying TCP session for new streams.
+func (ctl *Control) linkProbeWorker() {
+	msc, ok := ctl.sessionCtx.Connector.(MuxSessionConnector)
+	if !ok {
+		return
+	}
+	if !lo.FromPtr(ctl.sessionCtx.Common.Transport.TCPMux) {
+		return
+	}
+	sessionCount := msc.MuxSessionCount()
+	if sessionCount <= 1 {
+		return
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(ctl.sessionCtx.Common.Transport.TCPMuxLinkProbeMode))
+	if mode == "" {
+		mode = "auto"
+	}
+	if mode == "off" || mode == "disable" {
+		mode = "disabled"
+	}
+	if mode == "disabled" || mode == "passive" {
+		return
+	}
+
+	intervalSec := ctl.sessionCtx.Common.Transport.TCPMuxLinkProbeInterval
+	timeoutSec := ctl.sessionCtx.Common.Transport.TCPMuxLinkProbeTimeout
+	if timeoutSec <= 0 {
+		timeoutSec = 3
+	}
+
+	timeout := time.Duration(timeoutSec) * time.Second
+
+	var probeInFlight atomic.Bool
+	var probeDisabled atomic.Bool
+	var probeRound atomic.Int64
+
+	// In auto/active mode, try a cheap startup probe first to avoid repeated probe traffic on older frps versions.
+	// - If supported: in auto mode, enable periodic probing even when interval isn't set.
+	// - If not supported: disable and log once.
+	// - If unknown (e.g., transient network error): fall back to passive and rely on workConn handshakes.
+	if mode == "auto" || mode == "active" {
+		supported, decided := ctl.tryDetectProbeSupport(msc, timeout, sessionCount)
+		if decided && !supported {
+			probeDisabled.Store(true)
+			ctl.xl.Infof("tcp mux link probe disabled: frps doesn't support probe on new streams")
+			return
+		}
+		if mode == "auto" {
+			if decided && supported {
+				ctl.xl.Infof("tcp mux link probe enabled: frps supports probe on new streams")
+				if intervalSec <= 0 {
+					intervalSec = 10
+				}
+			} else if intervalSec <= 0 {
+				ctl.xl.Infof("tcp mux link probe skipped: probe support unknown and interval not set (fall back to passive)")
+				return
+			}
+		}
+	}
+	if intervalSec <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
+	defer ticker.Stop()
+
+	probeOnce := func() {
+		if probeDisabled.Load() {
+			return
+		}
+		if probeInFlight.Swap(true) {
+			return
+		}
+		defer probeInFlight.Store(false)
+
+		round := probeRound.Add(1)
+		var successCount atomic.Int64
+		var eofQuickCount atomic.Int64
+
+		var wg sync.WaitGroup
+		wg.Add(sessionCount)
+		for i := 0; i < sessionCount; i++ {
+			// Run each probe in its own goroutine so a slow link doesn't block others.
+			go func(idx int) {
+				defer wg.Done()
+
+				start := time.Now()
+				conn, err := msc.ConnectBySessionIndex(idx)
+				if err != nil {
+					msc.ReportMuxLinkProbeResult(idx, 0, err)
+					return
+				}
+				defer conn.Close()
+
+				_ = conn.SetDeadline(time.Now().Add(timeout))
+
+				ping := &msg.Ping{}
+				if err := ctl.sessionCtx.Auth.Setter.SetPing(ping); err != nil {
+					msc.ReportMuxLinkProbeResult(idx, 0, err)
+					return
+				}
+				if err := msg.WriteMsg(conn, ping); err != nil {
+					msc.ReportMuxLinkProbeResult(idx, 0, err)
+					return
+				}
+				var pong msg.Pong
+				if err := msg.ReadMsgInto(conn, &pong); err != nil {
+					// Backward-compat: older frps versions don't handle Ping as the first message on a new stream,
+					// so they will close the connection without responding.
+					if errors.Is(err, io.EOF) && time.Since(start) < timeout {
+						eofQuickCount.Add(1)
+					}
+					msc.ReportMuxLinkProbeResult(idx, 0, err)
+					return
+				}
+				if pong.Error != "" {
+					msc.ReportMuxLinkProbeResult(idx, 0, fmt.Errorf("%s", pong.Error))
+					return
+				}
+				successCount.Add(1)
+				msc.ReportMuxLinkProbeResult(idx, time.Since(start), nil)
+			}(i)
+		}
+		wg.Wait()
+
+		// If all probes failed with EOF quickly on the first round, assume frps doesn't support probe and disable it.
+		if round == 1 && successCount.Load() == 0 && eofQuickCount.Load() == int64(sessionCount) {
+			probeDisabled.Store(true)
+			ctl.xl.Infof("tcp mux link probe disabled: frps doesn't support probe on new streams")
+		}
+	}
+
+	// Probe immediately, then periodically.
+	probeOnce()
+	for {
+		select {
+		case <-ctl.doneCh:
+			return
+		case <-ticker.C:
+			probeOnce()
+		}
+	}
+}
+
+// tryDetectProbeSupport attempts a few probe requests and returns (supported, decided).
+// decided==true means we are confident about support (e.g., all attempts got EOF quickly -> unsupported, or got a valid Pong -> supported).
+func (ctl *Control) tryDetectProbeSupport(msc MuxSessionConnector, timeout time.Duration, sessionCount int) (supported bool, decided bool) {
+	// Keep this very lightweight: use a single session (index 0) to avoid noisy logs on older frps versions.
+	maxTry := 1
+
+	eofQuick := 0
+	for i := 0; i < maxTry; i++ {
+		idx := 0
+		if idx >= sessionCount {
+			return false, false
+		}
+		start := time.Now()
+		conn, err := msc.ConnectBySessionIndex(idx)
+		if err != nil {
+			continue
+		}
+		func() {
+			defer conn.Close()
+			_ = conn.SetDeadline(time.Now().Add(timeout))
+
+			ping := &msg.Ping{}
+			if err := ctl.sessionCtx.Auth.Setter.SetPing(ping); err != nil {
+				return
+			}
+			if err := msg.WriteMsg(conn, ping); err != nil {
+				return
+			}
+			var pong msg.Pong
+			if err := msg.ReadMsgInto(conn, &pong); err != nil {
+				if errors.Is(err, io.EOF) && time.Since(start) < timeout {
+					eofQuick++
+				}
+				return
+			}
+			if pong.Error != "" {
+				// If server returns an error, we treat it as "supported but rejected".
+				supported = true
+				decided = true
+				return
+			}
+			supported = true
+			decided = true
+		}()
+		if decided {
+			return supported, decided
+		}
+	}
+	if eofQuick == maxTry {
+		return false, true
+	}
+	return false, false
 }

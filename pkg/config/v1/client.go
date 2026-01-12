@@ -16,11 +16,26 @@ package v1
 
 import (
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/samber/lo"
 
 	"github.com/fatedier/frp/pkg/util/util"
 )
+
+type ClientServerConfig struct {
+	// Name is a unique identifier for this server entry, used by per-proxy allow lists.
+	// If empty, a name will be generated automatically.
+	Name string `json:"name,omitempty"`
+	// Addr is the address of frps.
+	Addr string `json:"addr,omitempty"`
+	// Port is the port of frps.
+	Port int `json:"port,omitempty"`
+	// Token overrides auth.token when connecting to this server. This allows different
+	// frps instances to use different tokens in multi-frps mode.
+	Token string `json:"token,omitempty"`
+}
 
 type ClientConfig struct {
 	ClientCommonConfig
@@ -44,6 +59,13 @@ type ClientCommonConfig struct {
 	// ServerPort specifies the port to connect to the server on. By default,
 	// this value is 7000.
 	ServerPort int `json:"serverPort,omitempty"`
+	// Servers specifies multiple frps endpoints. If non-empty, frpc can connect to
+	// all servers in active-active mode (external traffic distribution is handled
+	// outside frpc, e.g. DNS).
+	//
+	// Per-proxy allow lists can be used to restrict which servers a proxy should be
+	// registered to.
+	Servers []ClientServerConfig `json:"servers,omitempty"`
 	// STUN server to help penetrate NAT hole.
 	NatHoleSTUNServer string `json:"natHoleStunServer,omitempty"`
 	// DNSServer specifies a DNS server address for FRPC to use. If this value
@@ -80,6 +102,18 @@ type ClientCommonConfig struct {
 func (c *ClientCommonConfig) Complete() error {
 	c.ServerAddr = util.EmptyOr(c.ServerAddr, "0.0.0.0")
 	c.ServerPort = util.EmptyOr(c.ServerPort, 7000)
+	for i := range c.Servers {
+		if c.Servers[i].Port == 0 {
+			c.Servers[i].Port = c.ServerPort
+		}
+		if c.Servers[i].Name == "" {
+			if len(c.Servers) == 1 {
+				c.Servers[i].Name = "default"
+			} else {
+				c.Servers[i].Name = "server-" + strconv.Itoa(i+1)
+			}
+		}
+	}
 	c.LoginFailExit = util.EmptyOr(c.LoginFailExit, lo.ToPtr(true))
 	c.NatHoleSTUNServer = util.EmptyOr(c.NatHoleSTUNServer, "stun.easyvoip.com:3478")
 
@@ -122,6 +156,33 @@ type ClientTransportConfig struct {
 	// TCPMuxKeepaliveInterval specifies the keep alive interval for TCP stream multiplier.
 	// If TCPMux is true, heartbeat of application layer is unnecessary because it can only rely on heartbeat in TCPMux.
 	TCPMuxKeepaliveInterval int64 `json:"tcpMuxKeepaliveInterval,omitempty"`
+	// TCPMuxSessionCount specifies the number of underlying TCP connections (yamux sessions)
+	// to establish when TCPMux is enabled. Each session can carry multiple streams.
+	//
+	// This can improve resilience and throughput on unstable networks because new streams
+	// can be scheduled to a better session.
+	//
+	// Only effective when TCPMux is true.
+	TCPMuxSessionCount int `json:"tcpMuxSessionCount,omitempty"`
+	// TCPMuxLinkProbeInterval specifies how often (in seconds) to probe each TCP mux session
+	// and update link quality statistics for automatic session selection.
+	// Set to 0 to disable probing.
+	//
+	// Only effective when TCPMux is true and TCPMuxSessionCount > 1.
+	TCPMuxLinkProbeInterval int64 `json:"tcpMuxLinkProbeInterval,omitempty"`
+	// TCPMuxLinkProbeTimeout specifies the timeout (in seconds) for each link probe request.
+	// Only effective when probing is enabled.
+	TCPMuxLinkProbeTimeout int64 `json:"tcpMuxLinkProbeTimeout,omitempty"`
+	// TCPMuxLinkProbeMode specifies how to estimate link quality among tcp mux sessions.
+	//
+	// Optional values:
+	// - "passive": only use passive observations (e.g. work connection handshake latency), no extra probe traffic.
+	// - "active": periodically send probe requests to measure per-session RTT (requires frps support).
+	// - "auto": detect whether frps supports active probes on startup; enable active probes if supported, otherwise fall back to passive.
+	// - "disabled": disable active probes (passive observations may still be used).
+	//
+	// If empty, it defaults to "auto" when TCPMuxLinkProbeInterval > 0, otherwise "passive".
+	TCPMuxLinkProbeMode string `json:"tcpMuxLinkProbeMode,omitempty"`
 	// QUIC protocol options.
 	QUIC QUICOptions `json:"quic,omitempty"`
 	// HeartBeatInterval specifies at what interval heartbeats are sent to the
@@ -144,6 +205,50 @@ func (c *ClientTransportConfig) Complete() {
 	c.PoolCount = util.EmptyOr(c.PoolCount, 1)
 	c.TCPMux = util.EmptyOr(c.TCPMux, lo.ToPtr(true))
 	c.TCPMuxKeepaliveInterval = util.EmptyOr(c.TCPMuxKeepaliveInterval, 30)
+	c.TCPMuxSessionCount = util.EmptyOr(c.TCPMuxSessionCount, 1)
+	if c.TCPMuxSessionCount < 1 {
+		c.TCPMuxSessionCount = 1
+	}
+	c.TCPMuxLinkProbeTimeout = util.EmptyOr(c.TCPMuxLinkProbeTimeout, 3)
+	if c.TCPMuxLinkProbeTimeout < 1 {
+		c.TCPMuxLinkProbeTimeout = 1
+	}
+	c.TCPMuxLinkProbeInterval = util.EmptyOr(c.TCPMuxLinkProbeInterval, 0)
+	if c.TCPMuxLinkProbeInterval < 0 {
+		c.TCPMuxLinkProbeInterval = 0
+	}
+	c.TCPMuxLinkProbeMode = strings.ToLower(strings.TrimSpace(c.TCPMuxLinkProbeMode))
+	if c.TCPMuxLinkProbeMode == "" {
+		c.TCPMuxLinkProbeMode = "auto"
+	}
+	// Normalize aliases.
+	if c.TCPMuxLinkProbeMode == "off" {
+		c.TCPMuxLinkProbeMode = "disabled"
+	}
+	if c.TCPMuxLinkProbeMode == "disable" {
+		c.TCPMuxLinkProbeMode = "disabled"
+	}
+	// If tcpMux isn't enabled or there is only one session, probing doesn't apply.
+	if !lo.FromPtr(c.TCPMux) || c.TCPMuxSessionCount <= 1 {
+		if c.TCPMuxLinkProbeMode == "active" || c.TCPMuxLinkProbeMode == "auto" {
+			c.TCPMuxLinkProbeMode = "passive"
+		}
+		c.TCPMuxLinkProbeInterval = 0
+	}
+	// Note: in "auto" mode, the runtime will detect frps support and decide whether to
+	// enable periodic active probing. We keep the default interval as 0 here to avoid
+	// extra traffic unless active probing is explicitly enabled by config or detection.
+	if c.TCPMuxLinkProbeMode == "active" {
+		c.TCPMuxLinkProbeInterval = util.EmptyOr(c.TCPMuxLinkProbeInterval, 10)
+		if c.TCPMuxLinkProbeInterval < 1 {
+			c.TCPMuxLinkProbeInterval = 1
+		}
+	}
+	if c.TCPMuxLinkProbeMode == "disabled" || c.TCPMuxLinkProbeMode == "passive" {
+		// Avoid sending extra traffic by default and keep backward-compat with older frps.
+		c.TCPMuxLinkProbeInterval = 0
+	}
+
 	if lo.FromPtr(c.TCPMux) {
 		// If TCPMux is enabled, heartbeat of application layer is unnecessary because we can rely on heartbeat in tcpmux.
 		c.HeartbeatInterval = util.EmptyOr(c.HeartbeatInterval, -1)

@@ -481,6 +481,28 @@ func (svr *Service) handleConnection(ctx context.Context, conn net.Conn, interna
 				Error:     "",
 			})
 		}
+	case *msg.Ping:
+		// Optional, lightweight link probe.
+		// This is intentionally handled here so that clients can probe individual TCP mux sessions.
+		//
+		// Use server plugin hook for Ping so the behavior can be customized without changing core logic further.
+		content := &plugin.PingContent{
+			User: plugin.UserInfo{},
+			Ping: *m,
+		}
+		retContent, err := svr.pluginManager.Ping(content)
+		if err == nil {
+			m = &retContent.Ping
+			err = svr.auth.Verifier.VerifyPing(m)
+		}
+		if err != nil {
+			_ = msg.WriteMsg(conn, &msg.Pong{
+				Error: util.GenerateResponseErrorString("invalid ping", err, lo.FromPtr(svr.cfg.DetailedErrorsToClient)),
+			})
+		} else {
+			_ = msg.WriteMsg(conn, &msg.Pong{})
+		}
+		conn.Close()
 	default:
 		log.Warnf("error message type for the new connection [%s]", conn.RemoteAddr().String())
 		conn.Close()

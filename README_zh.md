@@ -67,6 +67,8 @@ an API that records Zoom, Google Meet, Microsoft Teams, in-person meetings, and 
 
 * 客户端服务端通信支持 TCP、QUIC、KCP 以及 Websocket 等多种协议。
 * 采用 TCP 连接流式复用，在单个连接间承载更多请求，节省连接建立时间，降低请求延迟。
+  * 当 `transport.tcpMux = true` 时，支持配置多条底层 TCP 连接（多路复用会话）并自动择优为新连接分配链路：`transport.tcpMuxSessionCount`。
+  * 支持链路探测模式：被动（`transport.tcpMuxLinkProbeMode = "passive"`）、主动（`"active"`）、自动检测（`"auto"`）以及禁用（`"disabled"`），并可配置探测间隔与超时：`transport.tcpMuxLinkProbeInterval`、`transport.tcpMuxLinkProbeTimeout`。
 * 代理组间的负载均衡。
 * 端口复用，多个服务通过同一个服务端端口暴露。
 * 支持 P2P 通信，流量不经过服务器中转，充分利用带宽资源。

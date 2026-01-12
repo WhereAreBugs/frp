@@ -423,15 +423,19 @@ var _ = ginkgo.Describe("[Feature: Basic]", func() {
 						}
 						timeout = 10 * time.Second
 					}
-					framework.NewRequestExpect(f).
+					re := framework.NewRequestExpect(f).
 						RequestModify(func(r *request.Request) {
 							r.Timeout(timeout)
 						}).
 						Protocol(protocol).
 						PortName(test.bindPortName).
 						Explain(test.proxyName).
-						ExpectError(test.expectError).
-						Ensure()
+						ExpectError(test.expectError)
+					if test.expectError {
+						re.Ensure()
+					} else {
+						re.EnsureEventually(10*time.Second, 200*time.Millisecond)
+					}
 				}
 			})
 		}

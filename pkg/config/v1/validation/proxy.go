@@ -61,6 +61,20 @@ func validateProxyBaseConfigForClient(c *v1.ProxyBaseConfig) error {
 			return fmt.Errorf("plugin %s: %v", c.Plugin.Type, err)
 		}
 	}
+
+	// Validate ServerNames allow list.
+	if len(c.ServerNames) > 0 {
+		seen := map[string]struct{}{}
+		for _, name := range c.ServerNames {
+			if strings.TrimSpace(name) == "" {
+				return fmt.Errorf("serverNames contains empty value")
+			}
+			if _, ok := seen[name]; ok {
+				return fmt.Errorf("serverNames contains duplicated value [%s]", name)
+			}
+			seen[name] = struct{}{}
+		}
+	}
 	return nil
 }
 

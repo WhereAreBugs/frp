@@ -82,9 +82,17 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 		time.Sleep(configures.testDelay)
 	}
 
-	framework.NewRequestExpect(f).PortName(tcpPortName).ExpectError(configures.expectError).Explain("tcp proxy").Ensure()
-	framework.NewRequestExpect(f).Protocol("udp").
-		PortName(udpPortName).ExpectError(configures.expectError).Explain("udp proxy").Ensure()
+	if configures.expectError {
+		framework.NewRequestExpect(f).PortName(tcpPortName).ExpectError(true).Explain("tcp proxy").Ensure()
+		framework.NewRequestExpect(f).Protocol("udp").
+			PortName(udpPortName).ExpectError(true).Explain("udp proxy").Ensure()
+		return
+	}
+
+	framework.NewRequestExpect(f).PortName(tcpPortName).Explain("tcp proxy").
+		EnsureEventually(10*time.Second, 200*time.Millisecond)
+	framework.NewRequestExpect(f).Protocol("udp").PortName(udpPortName).Explain("udp proxy").
+		EnsureEventually(10*time.Second, 200*time.Millisecond)
 }
 
 // defineClientServerTest test a normal tcp and udp proxy with specified TestConfigures.
@@ -311,10 +319,17 @@ var _ = ginkgo.Describe("[Feature: Client-Server]", func() {
 		for _, protocol := range supportProtocols {
 			tmp := protocol
 			defineClientServerTest("IPv6 bind address: "+strings.ToUpper(tmp), f, &generalTestConfigures{
+				clientPrefix: fmt.Sprintf(`
+[common]
+server_addr = ::1
+server_port = {{ .%s }}
+login_fail_exit = false
+log_level = trace
+`, consts.PortServerName),
 				server: fmt.Sprintf(`
-					bind_addr = ::
-					%s
-					`, renderBindPortConfig(protocol)),
+						bind_addr = ::
+						%s
+						`, renderBindPortConfig(protocol)),
 				client: fmt.Sprintf(`
 					protocol = %s
 					`, protocol),

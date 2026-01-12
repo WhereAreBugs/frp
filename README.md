@@ -867,6 +867,18 @@ You can disable this feature by modify `frps.toml` and `frpc.toml`:
 transport.tcpMux = false
 ```
 
+When `transport.tcpMux = true`, frpc can establish multiple underlying TCP connections (multiple yamux sessions) and automatically choose a better one for new streams:
+
+```toml
+# frpc.toml
+transport.tcpMuxSessionCount = 8
+# link quality estimation mode: passive | active | auto | disabled
+transport.tcpMuxLinkProbeMode = "auto"
+# probe each session and estimate link quality (seconds) in active/auto mode
+transport.tcpMuxLinkProbeInterval = 10
+transport.tcpMuxLinkProbeTimeout = 3
+```
+
 ### Support KCP Protocol
 
 KCP is a fast and reliable protocol that can achieve the transmission effect of a reduction of the average latency by 30% to 40% and reduction of the maximum delay by a factor of three, at the cost of 10% to 20% more bandwidth wasted than TCP.

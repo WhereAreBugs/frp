@@ -4,7 +4,8 @@ LDFLAGS := -s -w
 
 all: env fmt build
 
-build: frps frpc
+# Build only the extended binaries (downstream fork naming).
+build: frps-ext frpc-ext
 
 env:
 	@go version
@@ -28,11 +29,12 @@ gci:
 vet:
 	go vet ./...
 
-frps:
-	env CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -tags frps -o bin/frps ./cmd/frps
+# Extended binaries (downstream fork naming) for packaging scenarios such as luci-app-frpc-ext.
+frps-ext:
+	env CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -tags frps -o bin/frps-ext ./cmd/frps
 
-frpc:
-	env CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -tags frpc -o bin/frpc ./cmd/frpc
+frpc-ext:
+	env CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -tags frpc -o bin/frpc-ext ./cmd/frpc
 
 test: gotest
 
@@ -68,4 +70,6 @@ alltest: vet gotest e2e
 clean:
 	rm -f ./bin/frpc
 	rm -f ./bin/frps
+	rm -f ./bin/frpc-ext
+	rm -f ./bin/frps-ext
 	rm -rf ./lastversion

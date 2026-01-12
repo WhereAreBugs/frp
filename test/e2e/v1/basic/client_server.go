@@ -84,9 +84,17 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 		time.Sleep(configures.testDelay)
 	}
 
-	framework.NewRequestExpect(f).PortName(tcpPortName).ExpectError(configures.expectError).Explain("tcp proxy").Ensure()
-	framework.NewRequestExpect(f).Protocol("udp").
-		PortName(udpPortName).ExpectError(configures.expectError).Explain("udp proxy").Ensure()
+	tcpReq := framework.NewRequestExpect(f).PortName(tcpPortName).ExpectError(configures.expectError).Explain("tcp proxy")
+	udpReq := framework.NewRequestExpect(f).Protocol("udp").
+		PortName(udpPortName).ExpectError(configures.expectError).Explain("udp proxy")
+	if configures.expectError {
+		tcpReq.Ensure()
+		udpReq.Ensure()
+		return
+	}
+	// Some protocol combinations (e.g., TLS + kcp/quic) can take a short time before the remote port is ready.
+	tcpReq.EnsureEventually(10*time.Second, 200*time.Millisecond)
+	udpReq.EnsureEventually(10*time.Second, 200*time.Millisecond)
 }
 
 // defineClientServerTest test a normal tcp and udp proxy with specified TestConfigures.

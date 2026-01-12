@@ -3,6 +3,7 @@ package framework
 import (
 	"bytes"
 	"net/http"
+	"time"
 
 	flog "github.com/fatedier/frp/pkg/util/log"
 	"github.com/fatedier/frp/test/e2e/framework/consts"
@@ -121,6 +122,65 @@ func (e *RequestExpect) Ensure(fns ...EnsureFunc) {
 				flog.Tracef("response info: %+v", ret)
 			}
 			ExpectTrueWithOffset(1, ok, e.explain...)
+		}
+	}
+}
+
+// EnsureEventually retries Ensure() logic until it succeeds or maxWait elapses.
+// This is useful for e2e tests where the proxy port may take a short time to become ready.
+func (e *RequestExpect) EnsureEventually(maxWait time.Duration, interval time.Duration, fns ...EnsureFunc) {
+	deadline := time.Now().Add(maxWait)
+	if interval <= 0 {
+		interval = 200 * time.Millisecond
+	}
+
+	var (
+		lastErr error
+		lastRet *request.Response
+	)
+	for {
+		ret, err := e.req.Do()
+		lastErr = err
+		lastRet = ret
+
+		if e.expectError {
+			if err != nil {
+				return
+			}
+		} else if err == nil {
+			ok := true
+			if len(fns) == 0 {
+				ok = bytes.Equal(e.expectResp, ret.Content)
+			} else {
+				for _, fn := range fns {
+					if !fn(ret) {
+						ok = false
+						break
+					}
+				}
+			}
+			if ok {
+				return
+			}
+		}
+
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(interval)
+	}
+
+	if e.expectError {
+		ExpectErrorWithOffset(1, lastErr, e.explain...)
+		return
+	}
+	ExpectNoErrorWithOffset(1, lastErr, e.explain...)
+	if lastRet != nil && len(fns) == 0 {
+		ExpectEqualValuesWithOffset(1, string(lastRet.Content), string(e.expectResp), e.explain...)
+	}
+	if lastRet != nil && len(fns) > 0 {
+		for _, fn := range fns {
+			ExpectTrueWithOffset(1, fn(lastRet), e.explain...)
 		}
 	}
 }

@@ -116,7 +116,10 @@ type ProxyBaseConfig struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 	Transport   ProxyTransport    `json:"transport,omitempty"`
 	// metadata info for each proxy
-	Metadatas    map[string]string  `json:"metadatas,omitempty"`
+	Metadatas map[string]string `json:"metadatas,omitempty"`
+	// ServerNames restricts which servers (from clientCommon.servers[].name) this proxy should be registered to.
+	// If empty, the proxy will be registered to all servers.
+	ServerNames  []string           `json:"serverNames,omitempty"`
 	LoadBalancer LoadBalancerConfig `json:"loadBalancer,omitempty"`
 	HealthCheck  HealthCheckConfig  `json:"healthCheck,omitempty"`
 	ProxyBackend

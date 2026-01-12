@@ -29,6 +29,9 @@ func TestClientConfigComplete(t *testing.T) {
 
 	require.EqualValues("token", c.Auth.Method)
 	require.Equal(true, lo.FromPtr(c.Transport.TCPMux))
+	require.Equal(1, c.Transport.TCPMuxSessionCount)
+	require.EqualValues(0, c.Transport.TCPMuxLinkProbeInterval)
+	require.EqualValues("auto", c.Transport.TCPMuxLinkProbeMode)
 	require.Equal(true, lo.FromPtr(c.LoginFailExit))
 	require.Equal(true, lo.FromPtr(c.Transport.TLS.Enable))
 	require.Equal(true, lo.FromPtr(c.Transport.TLS.DisableCustomTLSFirstByte))

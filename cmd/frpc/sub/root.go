@@ -159,6 +159,72 @@ func startService(
 		log.Infof("start frpc service for config file [%s]", cfgFile)
 		defer log.Infof("frpc service for config file [%s] stopped", cfgFile)
 	}
+
+	// Multi-frps mode (active-active).
+	if len(cfg.Servers) > 0 {
+		if cfg.WebServer.Port > 0 {
+			return fmt.Errorf("webServer is not supported in multi-frps mode yet, please set webServer.port = 0")
+		}
+		if cfg.VirtualNet.Address != "" {
+			return fmt.Errorf("virtualNet is not supported in multi-frps mode yet")
+		}
+		if len(visitorCfgs) > 0 {
+			return fmt.Errorf("visitors are not supported in multi-frps mode yet")
+		}
+
+		services := make([]*client.Service, 0, len(cfg.Servers))
+		for _, s := range cfg.Servers {
+			common := *cfg
+			common.Servers = nil
+			common.ServerAddr = s.Addr
+			common.ServerPort = s.Port
+			if s.Token != "" {
+				common.Auth.Token = s.Token
+				common.Auth.TokenSource = nil
+			}
+
+			filteredProxies := client.FilterProxyCfgsByServerName(proxyCfgs, s.Name)
+			log.Infof("start frpc service to frps [%s] %s:%d, proxies=%d", s.Name, s.Addr, s.Port, len(filteredProxies))
+
+			svr, err := client.NewService(client.ServiceOptions{
+				Common:         &common,
+				ProxyCfgs:      filteredProxies,
+				VisitorCfgs:    nil,
+				UnsafeFeatures: unsafeFeatures,
+				ConfigFilePath: cfgFile,
+			})
+			if err != nil {
+				return err
+			}
+			services = append(services, svr)
+		}
+
+		go func() {
+			ch := make(chan os.Signal, 1)
+			signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+			<-ch
+			for _, s := range services {
+				s.GracefulClose(500 * time.Millisecond)
+			}
+		}()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		errCh := make(chan error, len(services))
+		for _, s := range services {
+			go func(svr *client.Service) {
+				errCh <- svr.Run(ctx)
+			}(s)
+		}
+		// Wait for the first service to exit, then stop others.
+		err := <-errCh
+		cancel()
+		for _, s := range services {
+			s.GracefulClose(500 * time.Millisecond)
+		}
+		return err
+	}
+
 	svr, err := client.NewService(client.ServiceOptions{
 		Common:         cfg,
 		ProxyCfgs:      proxyCfgs,

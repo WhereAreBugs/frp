@@ -9,6 +9,16 @@ user = "your_name"
 serverAddr = "0.0.0.0"
 serverPort = 7000
 
+# Multi-frps mode (active-active): connect to multiple frps instances at the same time.
+# External traffic distribution is handled outside frpc (e.g., DNS/GeoDNS).
+#
+# When this is set, serverAddr/serverPort are used as defaults for missing port values.
+#
+# servers = [
+#   { name = "cn", addr = "cn-frps.example.com", port = 7000, token = "token-cn" },
+#   { name = "us", addr = "us-frps.example.com", port = 7000, token = "token-us" },
+# ]
+
 # STUN server to help penetrate NAT hole.
 # natHoleStunServer = "stun.easyvoip.com:3478"
 
@@ -92,6 +102,25 @@ transport.poolCount = 5
 
 # If tcp stream multiplexing is used, default is true, it must be same with frps
 # transport.tcpMux = true
+
+# Number of underlying TCP mux sessions to establish when tcpMux is enabled.
+# Each session is a real TCP connection and can carry multiple streams.
+# Recommended values: 8 or 16 (depends on network/ISP and CPU).
+# transport.tcpMuxSessionCount = 8
+
+# Link probe mode among tcp mux sessions.
+# - passive: no extra probe traffic (default), uses passive observations only.
+# - active: periodic probe requests (requires frps support).
+# - auto: detect frps support on startup; enable active probes if supported, otherwise fall back to passive.
+# - disabled: disable active probing.
+# transport.tcpMuxLinkProbeMode = "auto"
+
+# Probe interval (seconds) for each tcp mux session in active/auto mode.
+# In auto mode, if frps supports probing and this value is 0, frpc will use a default value (10s).
+# transport.tcpMuxLinkProbeInterval = 10
+
+# Probe timeout (seconds) for each session probe.
+# transport.tcpMuxLinkProbeTimeout = 3
 
 # Specify keep alive interval for tcp mux.
 # only valid if tcpMux is enabled.
