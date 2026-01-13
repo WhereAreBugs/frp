@@ -451,13 +451,34 @@ func (c *defaultConnectorImpl) realConnect() (net.Conn, error) {
 		}
 	}
 
+	protocol := c.cfg.Transport.Protocol
+	if protocol == "kcp" {
+		// golib/net's KCP dialer ignores context/timeout and can block forever.
+		// Use our context-aware dialer to avoid hanging the client (and e2e tests).
+		address := net.JoinHostPort(c.cfg.ServerAddr, strconv.Itoa(c.cfg.ServerPort))
+		conn, err := netpkg.DialKCPContext(c.ctx, address, time.Duration(c.cfg.Transport.DialServerTimeout)*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		// Custom TLS head byte, if enabled.
+		if tlsConfig != nil && !lo.FromPtr(c.cfg.Transport.TLS.DisableCustomTLSFirstByte) {
+			if _, err := conn.Write([]byte{byte(netpkg.FRPTLSHeadByte)}); err != nil {
+				_ = conn.Close()
+				return nil, err
+			}
+		}
+		if tlsConfig != nil {
+			conn = tls.Client(conn, tlsConfig)
+		}
+		return conn, nil
+	}
+
 	proxyType, addr, auth, err := libnet.ParseProxyURL(c.cfg.Transport.ProxyURL)
 	if err != nil {
 		xl.Errorf("fail to parse proxy url")
 		return nil, err
 	}
 	dialOptions := []libnet.DialOption{}
-	protocol := c.cfg.Transport.Protocol
 	switch protocol {
 	case "websocket":
 		protocol = "tcp"

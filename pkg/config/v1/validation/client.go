@@ -243,9 +243,29 @@ func ValidateAllClientConfig(
 		}
 	}
 
+	serverNameSet := map[string]struct{}{}
+	if c != nil {
+		for _, s := range c.Servers {
+			if strings.TrimSpace(s.Name) == "" {
+				continue
+			}
+			serverNameSet[s.Name] = struct{}{}
+		}
+	}
+
 	for _, c := range visitorCfgs {
 		if err := ValidateVisitorConfigurer(c); err != nil {
 			return warnings, fmt.Errorf("visitor %s: %v", c.GetBaseConfig().Name, err)
+		}
+		// Multi-frps mode requires visitors to bind to a specific frps instance.
+		if len(serverNameSet) > 0 {
+			frpsName := strings.TrimSpace(c.GetBaseConfig().FRPServerName)
+			if frpsName == "" {
+				return warnings, fmt.Errorf("visitor %s: frpsName is required when servers is configured", c.GetBaseConfig().Name)
+			}
+			if _, ok := serverNameSet[frpsName]; !ok {
+				return warnings, fmt.Errorf("visitor %s: frpsName [%s] not found in servers", c.GetBaseConfig().Name, frpsName)
+			}
 		}
 	}
 	return warnings, nil

@@ -77,3 +77,20 @@ func FilterProxyCfgsByServerName(cfgs []v1.ProxyConfigurer, serverName string) [
 	}
 	return out
 }
+
+// FilterVisitorCfgsByServerName filters visitor configurers by the explicit frps binding.
+//
+// In multi-frps mode, visitors must bind to exactly one server by `frpsName`.
+func FilterVisitorCfgsByServerName(cfgs []v1.VisitorConfigurer, serverName string) []v1.VisitorConfigurer {
+	if len(cfgs) == 0 {
+		return nil
+	}
+	out := make([]v1.VisitorConfigurer, 0, len(cfgs))
+	for _, c := range cfgs {
+		base := c.GetBaseConfig()
+		if strings.TrimSpace(base.FRPServerName) == serverName {
+			out = append(out, c)
+		}
+	}
+	return out
+}

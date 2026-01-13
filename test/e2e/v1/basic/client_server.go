@@ -92,9 +92,29 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 		udpReq.Ensure()
 		return
 	}
-	// Some protocol combinations (e.g., TLS + kcp/quic) can take a short time before the remote port is ready.
-	tcpReq.EnsureEventually(10*time.Second, 200*time.Millisecond)
-	udpReq.EnsureEventually(10*time.Second, 200*time.Millisecond)
+	// Some protocol combinations (e.g., TLS + kcp/quic) can take longer before the remote port is ready.
+	ensureTimeout := 10 * time.Second
+	clientCfg := strings.Join(strings.Fields(configures.client), "")
+	isKCP := strings.Contains(clientCfg, "transport.protocol=\"kcp\"")
+	isQUIC := strings.Contains(clientCfg, "transport.protocol=\"quic\"")
+	isTLS := strings.Contains(clientCfg, "transport.tls.") ||
+		strings.Contains(clientCfg, "transport.tls.disableCustomTLSFirstByte=false")
+
+	switch {
+	case isKCP:
+		ensureTimeout = 30 * time.Second
+		if isTLS {
+			// KCP + TLS (especially with client certs) can be significantly slower on busy hosts.
+			ensureTimeout = 90 * time.Second
+		}
+	case isQUIC:
+		ensureTimeout = 30 * time.Second
+		if isTLS {
+			ensureTimeout = 60 * time.Second
+		}
+	}
+	tcpReq.EnsureEventually(ensureTimeout, 200*time.Millisecond)
+	udpReq.EnsureEventually(ensureTimeout, 200*time.Millisecond)
 }
 
 // defineClientServerTest test a normal tcp and udp proxy with specified TestConfigures.

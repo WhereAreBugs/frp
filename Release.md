@@ -1,14 +1,25 @@
 ## v0.66.0-ext
 
-### 主要特性
-- TCPMux 多会话自动择优：支持frpc到frps之间多连接（多协议或单协议），主动/被动链路探测自动选择最优会话，切换对任意客户端 payload 透明。
-- 多 FRPS 并行连接与负载均衡：`servers[]` 多服务端注册，按 proxy 的 `serverNames` 允许列表筛选，支持每个服务端独立 token。
-- FRPS 反代端口支持 TCP Fast Open：为各类 TCP listener 尝试开启 TFO（尽力而为，不支持则自动降级），通过 `transport.tcpFastOpen` / `transport.tcpFastOpenQueue` 配置，详见 `doc/tcp_fast_open.md`。
+### 新增特性
+- 多 FRPS 并行连接（active-active）：支持通过 `servers[]` 同时连接多个 frps，并为每个 server 单独配置 token。
+- 按条目选择目标 FRPS：
+  - proxies 支持 `serverNames`（允许列表）决定注册到哪些 frps。
+  - visitors 支持 `frpsName`（强制单选）绑定到指定 frps。
+- 单个 frps 支持多协议端口：`servers[]` 支持 `tcpPort/quicPort/kcpPort/websocketPort/wssPort`，frpc 会为每个协议建连接并在 workConn 上做轮询。
+- FRPS TCP Fast Open（TFO）：为 frps 的 TCP listeners 尝试开启 TFO（best-effort，不支持自动降级），配置项：
+  - `transport.tcpFastOpen`
+  - `transport.tcpFastOpenQueue`
+  详见 `doc/tcp_fast_open.md`。
 
-### 兼容性
-- `tcpMuxLinkProbeMode` 默认 `auto`，会自动检测服务端是否支持主动链路探测模式，不支持时回退被动模式。
-- 多 FRPS 模式暂不支持 visitors/webServer/virtualNet，proxy 需配置 `serverNames` 以选择注册到哪些服务端。
+### bug修复
+- 修复 frpc 在 `transport.protocol = "kcp"` 时可能卡在连接阶段不超时的问题：KCP dial 现在支持 context/timeout，避免长期阻塞导致代理一直无法注册。
+
+### 兼容性与行为变更
+- `tcpMuxLinkProbeMode` 默认 `auto`：自动探测服务端是否支持主动链路探测，不支持则回退被动模式。
+- multi-frps 模式限制：
+  - webServer / virtualNet 仍不支持。
+  - visitors 在 multi-frps 下必须显式填写 `frpsName`，否则校验失败。
 
 ### 构建与发布
 - 可执行文件命名统一为 `frpc-ext` / `frps-ext`，避免与上游冲突。
-- OpenWrt feed 提供 `frpc-ext`、`frps-ext`、`luci-app-frpc-ext` 三个包，支持官方 SDK 多架构编译。
+- 提供OpenWrt [feed](https://github.com/WhereAreBugs/frp-ext-feed) ，包含 `frpc-ext`、`frps-ext`、`luci-app-frpc-ext` 等包，支持官方 SDK 多架构编译。

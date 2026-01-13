@@ -42,7 +42,11 @@ type VisitorBaseConfig struct {
 	// if the server user is not set, it defaults to the current user
 	ServerUser string `json:"serverUser,omitempty"`
 	ServerName string `json:"serverName,omitempty"`
-	BindAddr   string `json:"bindAddr,omitempty"`
+	// FRPServerName specifies which frps instance this visitor should connect to in multi-frps mode.
+	//
+	// It is required when client.servers is configured.
+	FRPServerName string `json:"frpsName,omitempty"`
+	BindAddr      string `json:"bindAddr,omitempty"`
 	// BindPort is the port that visitor listens on.
 	// It can be less than 0, it means don't bind to the port and only receive connections redirected from
 	// other visitors. (This is not supported for SUDP now)

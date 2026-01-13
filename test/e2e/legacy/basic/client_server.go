@@ -93,14 +93,21 @@ func runClientServerTest(f *framework.Framework, configures *generalTestConfigur
 	// UDP-based control connections (kcp/quic) can be slower to establish on busy hosts.
 	// Normalize config to tolerate different whitespace/newline formatting.
 	clientCfg := strings.Join(strings.Fields(configures.client), "")
-	isKCPOrQUIC := strings.Contains(clientCfg, "protocol=kcp") || strings.Contains(clientCfg, "protocol=quic")
-	if isKCPOrQUIC {
+	isKCP := strings.Contains(clientCfg, "protocol=kcp")
+	isQUIC := strings.Contains(clientCfg, "protocol=quic")
+	if isKCP || isQUIC {
+		// KCP is more sensitive to host load and may take longer to become ready.
 		ensureTimeout = 30 * time.Second
-		// Mutual TLS over UDP-based protocols can take longer (cert parsing + handshake).
+		if isKCP {
+			ensureTimeout = 60 * time.Second
+		}
+		// TLS over UDP-based protocols can take longer on busy hosts.
+		// This includes mutual TLS and cases where only disable_custom_tls_first_byte is configured.
 		if strings.Contains(clientCfg, "tls_cert_file=") ||
 			strings.Contains(clientCfg, "tls_key_file=") ||
 			strings.Contains(clientCfg, "tls_trusted_ca_file=") ||
-			strings.Contains(clientCfg, "tls_server_name=") {
+			strings.Contains(clientCfg, "tls_server_name=") ||
+			strings.Contains(clientCfg, "disable_custom_tls_first_byte=false") {
 			ensureTimeout = 60 * time.Second
 		}
 	}

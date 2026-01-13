@@ -168,9 +168,6 @@ func startService(
 		if cfg.VirtualNet.Address != "" {
 			return fmt.Errorf("virtualNet is not supported in multi-frps mode yet")
 		}
-		if len(visitorCfgs) > 0 {
-			return fmt.Errorf("visitors are not supported in multi-frps mode yet")
-		}
 
 		services := make([]*client.Service, 0, len(cfg.Servers))
 		for _, s := range cfg.Servers {
@@ -191,8 +188,9 @@ func startService(
 			common.Transport.Protocol = protocolPorts[0].Protocol
 
 			filteredProxies := client.FilterProxyCfgsByServerName(proxyCfgs, s.Name)
-			log.Infof("start frpc service to frps [%s] %s (%s), proxies=%d",
-				s.Name, s.Addr, client.FormatServerProtocolPorts(protocolPorts), len(filteredProxies))
+			filteredVisitors := client.FilterVisitorCfgsByServerName(visitorCfgs, s.Name)
+			log.Infof("start frpc service to frps [%s] %s (%s), proxies=%d visitors=%d",
+				s.Name, s.Addr, client.FormatServerProtocolPorts(protocolPorts), len(filteredProxies), len(filteredVisitors))
 
 			var connectorCreator func(context.Context, *v1.ClientCommonConfig) client.Connector
 			if len(protocolPorts) > 1 {
@@ -206,7 +204,7 @@ func startService(
 			svr, err := client.NewService(client.ServiceOptions{
 				Common:           &common,
 				ProxyCfgs:        filteredProxies,
-				VisitorCfgs:      nil,
+				VisitorCfgs:      filteredVisitors,
 				UnsafeFeatures:   unsafeFeatures,
 				ConfigFilePath:   cfgFile,
 				ConnectorCreator: connectorCreator,

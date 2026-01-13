@@ -450,6 +450,8 @@ type = "virtual_net"
 [[visitors]]
 name = "secret_tcp_visitor"
 type = "stcp"
+# In multi-frps mode, visitors must bind to exactly one frps by name.
+# frpsName = "cn"
 # the server name you want to visitor
 serverName = "secret_tcp"
 secretKey = "abcdefg"
@@ -462,6 +464,8 @@ bindPort = 9000
 [[visitors]]
 name = "p2p_tcp_visitor"
 type = "xtcp"
+# In multi-frps mode, visitors must bind to exactly one frps by name.
+# frpsName = "cn"
 # if the server user is not set, it defaults to the current user
 serverUser = "user1"
 serverName = "p2p_tcp"
@@ -488,6 +492,8 @@ disableAssistedAddrs = false
 [[visitors]]
 name = "vnet-visitor"
 type = "stcp"
+# In multi-frps mode, visitors must bind to exactly one frps by name.
+# frpsName = "cn"
 serverName = "vnet-server"
 secretKey = "your-secret-key"
 bindPort = -1
